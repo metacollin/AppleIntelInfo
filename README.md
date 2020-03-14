@@ -1,5 +1,6 @@
 AppleIntelInfo.kext
 ===================
+### Updated to work with Xeon Scalable CPUs
 
 What do I need to do?
 
