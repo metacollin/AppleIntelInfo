@@ -70,4 +70,7 @@
 #define INTEL_FAM6_XEON_PHI_KNL		0x57 /* Knights Landing */
 #define INTEL_FAM6_XEON_PHI_KNM		0x85 /* Knights Mill */
 
+#define PLATID_XEON_SP_1                0x00
+#define PLATID_XEON_SP_2                0x07
+
 #endif /* _ASM_X86_INTEL_FAMILY_H */

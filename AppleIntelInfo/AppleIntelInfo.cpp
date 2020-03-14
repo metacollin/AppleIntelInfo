@@ -333,7 +333,7 @@ void AppleIntelInfo::reportHWP(void)
 					float busy = ((pPerf * 100) / aPerf);
 					UInt8 multiplier = (UInt8)(((gClockRatio + 0.5) * busy) / 100);
 
-					IOLOG("MSR_PPERF........................(0x63E) : 0x%llX (%d)\n", msr, multiplier);
+					IOLOG("MSR_PPERF........................(0x64E) : 0x%llX (%d)\n", msr, multiplier);
 					break;
 			}
 
@@ -619,9 +619,20 @@ void AppleIntelInfo::reportMSRs(void)
     
 	msr = rdmsr64(MSR_IA32_PLATFORM_ID);
     
+    // Determine if CPU is actually a Skylake-SP/Cascadelake-SP (aka Xeon Scalable 1st or 2nd generation)
+    uint8_t  cpuid_processor_flag =  (msr >> 50) & 0x7;
+    bool is_xeon_sp = 0;
+    
+    if ((cpuid_processor_flag == PLATID_XEON_SP_1 || cpuid_processor_flag == PLATID_XEON_SP_2) && gCpuModel == INTEL_FAM6_SKYLAKE_X) {
+        is_xeon_sp = 1;
+    }
+    
+    
 	IOLOG("\nMSR_IA32_PLATFORM_ID.............(0x17)  : 0x%llX\n", msr);
 	IOLOG("------------------------------------------\n");
     IOLOG(" - Processor Flags...................... : %d\n", (uint8_t)bitfield32(msr, 52, 50));
+    if (is_xeon_sp)
+    IOLOG(" - Xeon Scalable........................ : %s\n", "Yes");
     
 	msr = rdmsr64(MSR_CORE_THREAD_COUNT);
     
@@ -662,6 +673,8 @@ void AppleIntelInfo::reportMSRs(void)
 	IOLOG("------------------------------------------\n");
 	IOLOG(" - I/O MWAIT Redirection Enable......... : %s\n", (msr_pmg_cst_config_control & (1 << 10)) ? "1 (enabled, IO read of MSR(0xE4) mapped to MWAIT)" : "0 (not enabled)");
 	IOLOG(" - CFG Lock............................. : %s\n", (msr_pmg_cst_config_control & (1 << 15)) ? "1 (MSR locked until next reset)" : "0 (MSR not locked)");
+    if (is_xeon_sp)
+    IOLOG(" - Automatic C-State Conversion Enable.. : %s\n", (msr_pmg_cst_config_control & (1 << 16)) ? "1 (enabled)" : "0 (disabled/unsupported)");
 
 	IOLOG(" - C3 State Auto Demotion............... : %s\n", (msr_pmg_cst_config_control & (1 << 25)) ? "1 (enabled)" : "0 (disabled/unsupported)");
 	IOLOG(" - C1 State Auto Demotion............... : %s\n", (msr_pmg_cst_config_control & (1 << 26)) ? "1 (enabled)" : "0 (disabled/unsupported)");
@@ -673,7 +686,21 @@ void AppleIntelInfo::reportMSRs(void)
 	// Intel® Xeon® Processor D and Intel Xeon Processors E5 v4 Family Based on the Broadwell Microarchitecture
 	IOLOG(" - Package C-State Auto Demotion........ : %s\n", (msr_pmg_cst_config_control & (1 << 29)) ? "1 (enabled)" : "0 (disabled/unsupported)");
 	IOLOG(" - Package C-State Undemotion........... : %s\n", (msr_pmg_cst_config_control & (1 << 30)) ? "1 (enabled)" : "0 (disabled/unsupported)");
-
+    
+    switch(bitfield32(msr, 2, 0))
+    {
+        case 0: IOLOG(" - Package C-State Limit................ : %llu (%s)\n", bitfield32(msr, 2, 0), "C0/C1 (no package C-state support)");
+            break;
+        case 1: IOLOG(" - Package C-State Limit................ : %llu (%s)\n", bitfield32(msr, 2, 0), "C2");
+            break;
+        case 2: IOLOG(" - Package C-State Limit................ : %llu (%s)\n", bitfield32(msr, 2, 0), "C6 (non-retention)");
+            break;
+        case 3: IOLOG(" - Package C-State Limit................ : %llu (%s)\n", bitfield32(msr, 2, 0), "C6 (retention)");
+            break;
+        case 7: IOLOG(" - Package C-State Limit................ : %llu (%s)\n", bitfield32(msr, 2, 0), "No limit. All C-states are available.");
+            break;
+    }
+    
 	msr = rdmsr64(MSR_PMG_IO_CAPTURE_BASE);
 
 	IOLOG("\nMSR_PMG_IO_CAPTURE_BASE..........(0xE4)  : 0x%llX\n", msr);
@@ -893,65 +920,99 @@ void AppleIntelInfo::reportMSRs(void)
 	}
 
 	msr = rdmsr64(MSR_TURBO_RATIO_LIMIT);
+    
+    // Xeon Scalable CPUs do not have MSR_TURBO_RATIO_LIMITx MSRs, trying to read from them causes a panic.  Let's not do that.
+    if(!is_xeon_sp)
+    {
+        IOLOG("\nMSR_TURBO_RATIO_LIMIT............(0x1AD) : 0x%llX\n", msr);
+        IOLOG("------------------------------------------\n");
 
-	IOLOG("\nMSR_TURBO_RATIO_LIMIT............(0x1AD) : 0x%llX\n", msr);
-	IOLOG("------------------------------------------\n");
+        for (int i = 1; (i < 9) && (i <= gCoreCount); i++)
+        {
+            core_limit = bitfield32(msr, 7, 0);
+            
+            if (core_limit)
+            {
+                IOLOG(" - Maximum Ratio Limit for C%02d.......... : %X (%u MHz) %s\n", i, core_limit, (core_limit * gBclk), ((i > gCoreCount) && core_limit) ? "(garbage / unused)" : "");
 
-	for (int i = 1; (i < 9) && (i <= gCoreCount); i++)
-	{
-		core_limit = bitfield32(msr, 7, 0);
-		
-		if (core_limit)
-		{
-			IOLOG(" - Maximum Ratio Limit for C%02d.......... : %X (%u MHz) %s\n", i, core_limit, (core_limit * gBclk), ((i > gCoreCount) && core_limit) ? "(garbage / unused)" : "");
-
-			msr = (msr >> 8);
-		}
-	}
-	//
-	// Intel® Xeon® Processor E5 v3 Family
-	//
-	if (gCoreCount > 8)
-	{
-		msr = rdmsr64(MSR_TURBO_RATIO_LIMIT1);
+                msr = (msr >> 8);
+            }
+        }
+        //
+        // Intel® Xeon® Processor E5 v3 Family
+        //
+        if (gCoreCount > 8)
+        {
+            msr = rdmsr64(MSR_TURBO_RATIO_LIMIT1);
+        
+            IOLOG("\nMSR_TURBO_RATIO_LIMIT1...........(0x1AE) : 0x%llX\n", msr);
+            IOLOG("------------------------------------------\n");
+        
+            for (int i = 9; (i < 17) && (i <= gCoreCount); i++)
+            {
+                core_limit = bitfield32(msr, 7, 0);
+            
+                if (core_limit)
+                {
+                    IOLOG(" - Maximum Ratio Limit for C%02d.......... : %X (%u MHz) %s\n", i, core_limit, (core_limit * gBclk), ((i > gCoreCount) && core_limit) ? "(garbage / unused)" : "");
+            
+                    msr = (msr >> 8);
+                }
+            }
+        }
+        //
+        // Intel® Xeon® Processor E5 v3 Family
+        //
+        if (gCoreCount > 16)
+        {
+            msr = rdmsr64(MSR_TURBO_RATIO_LIMIT2);
+        
+            IOLOG("\nMSR_TURBO_RATIO_LIMIT2...........(0x1AF) : 0x%llX\n", msr);
+            IOLOG("------------------------------------------\n");
+        
+            for (int i = 17; (i < 33) && (i <= gCoreCount); i++)
+            {
+                core_limit = bitfield32(msr, 7, 0);
+            
+                if (core_limit)
+                {
+                    IOLOG(" - Maximum Ratio Limit for C%02d.......... : %X (%u MHz) %s\n", i, core_limit, (core_limit * gBclk), ((i > gCoreCount) && core_limit) ? "(garbage / unused)" : "");
+            
+                    msr = (msr >> 8);
+                }
+            }
+        }
+    }
+    else
+    {
+        //Correct way to read ratio limits on Skylake-SP platforms
+        IOLOG("\nMSR_TURBO_RATIO_LIMIT.................(0x1AD) : 0x%llX\n", msr);
+        unsigned int core_freq[8];
+        unsigned int core_num[8];
+        for (int i = 0; (i < 8) && (i <= gCoreCount); i++)
+        {
+            core_freq[i] = bitfield32(msr, 7, 0);
+            msr = (msr >> 8);
+        }
+        msr = rdmsr64(MSR_TURBO_RATIO_LIMIT_CORES);
+        
+        IOLOG("\nMSR_TURBO_RATIO_LIMIT_CORES...........(0x1AE) : 0x%llX\n", msr);
+        IOLOG("------------------------------------------\n");
+        
+        for (int i = 0; (i < 8) && (i <= gCoreCount); i++)
+        {
+            core_num[i] = bitfield32(msr, 7, 0);
+        
+                msr = (msr >> 8);
+            
+        }
+        
+        for (int i = 0; (i < 8) && (i <= gCoreCount); i++)
+        {
+        IOLOG("Maximum Ratio Limit for C%02d.......... : %X (%u MHz)\n", core_num[i], core_freq[i], (core_freq[i] * gBclk));
+        }
+    }
 	
-		IOLOG("\nMSR_TURBO_RATIO_LIMIT1...........(0x1AE) : 0x%llX\n", msr);
-		IOLOG("------------------------------------------\n");
-	
-		for (int i = 9; (i < 17) && (i <= gCoreCount); i++)
-		{
-			core_limit = bitfield32(msr, 7, 0);
-		
-			if (core_limit)
-			{
-				IOLOG(" - Maximum Ratio Limit for C%02d.......... : %X (%u MHz) %s\n", i, core_limit, (core_limit * gBclk), ((i > gCoreCount) && core_limit) ? "(garbage / unused)" : "");
-		
-				msr = (msr >> 8);
-			}
-		}
-	}
-	//
-	// Intel® Xeon® Processor E5 v3 Family
-	//
-	if (gCoreCount > 16)
-	{
-		msr = rdmsr64(MSR_TURBO_RATIO_LIMIT2);
-	
-		IOLOG("\nMSR_TURBO_RATIO_LIMIT2...........(0x1AF) : 0x%llX\n", msr);
-		IOLOG("------------------------------------------\n");
-	
-		for (int i = 17; (i < 33) && (i <= gCoreCount); i++)
-		{
-			core_limit = bitfield32(msr, 7, 0);
-		
-			if (core_limit)
-			{
-				IOLOG(" - Maximum Ratio Limit for C%02d.......... : %X (%u MHz) %s\n", i, core_limit, (core_limit * gBclk), ((i > gCoreCount) && core_limit) ? "(garbage / unused)" : "");
-		
-				msr = (msr >> 8);
-			}
-		}
-	}
 	
 	do_cpuid(0x00000006, cpuid_reg);
 
@@ -999,12 +1060,12 @@ void AppleIntelInfo::reportMSRs(void)
 		reportRAPL(RAPL_BASE);
 	}
 
-	if (supportsRAPL(RAPL_PKG))
+    if (supportsRAPL(RAPL_PKG))
 	{
 		reportRAPL(RAPL_PKG);
-	}
+    }
 
-	if (gCpuModel == INTEL_FAM6_SANDYBRIDGE) // 0x2A - Intel 325462.pdf Vol.3C 35-120
+    if (gCpuModel == INTEL_FAM6_SANDYBRIDGE) // 0x2A - Intel 325462.pdf Vol.3C 35-120
 	{
 		IOLOG("\nMSR_PP0_CURRENT_CONFIG...........(0x601) : 0x%llX\n", (unsigned long long)rdmsr64(MSR_PP0_CURRENT_CONFIG));
 	}

@@ -20,6 +20,7 @@
 #include <IOKit/IOMemoryDescriptor.h>
 #include <IOKit/IOTimerEventSource.h>
 
+#include <sys/time.h>
 #include <sys/vnode.h>
 #include <sys/fcntl.h>
 #include <sys/proc.h>
@@ -36,7 +37,7 @@
 
 #define super IOService
 
-#define VERSION					"2.9"
+#define VERSION					"3.0"
 
 /*
  * Build settings (0 = disable feature / 1 = enable feature)
@@ -47,12 +48,12 @@
 #define REPORT_HWP				1
 #define REPORT_HDC				1
 
-#define REPORT_IGPU_P_STATES	1
+#define REPORT_IGPU_P_STATES	0
 #define REPORT_C_STATES			1
 #define REPORT_IPG_STYLE		1
 #define REPORT_INTEL_REGS		0
 
-#define ENABLE_HWP				1
+#define ENABLE_HWP				0
 
 #define WRITE_LOG_REPORT		1
 
