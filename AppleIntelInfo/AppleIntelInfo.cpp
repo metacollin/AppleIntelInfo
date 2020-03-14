@@ -687,17 +687,17 @@ void AppleIntelInfo::reportMSRs(void)
 	IOLOG(" - Package C-State Auto Demotion........ : %s\n", (msr_pmg_cst_config_control & (1 << 29)) ? "1 (enabled)" : "0 (disabled/unsupported)");
 	IOLOG(" - Package C-State Undemotion........... : %s\n", (msr_pmg_cst_config_control & (1 << 30)) ? "1 (enabled)" : "0 (disabled/unsupported)");
     
-    switch(bitfield32(msr, 2, 0))
+    switch(bitfield32(msr_pmg_cst_config_control, 2, 0))
     {
-        case 0: IOLOG(" - Package C-State Limit................ : %llu (%s)\n", bitfield32(msr, 2, 0), "C0/C1 (no package C-state support)");
+        case 0: IOLOG(" - Package C-State Limit................ : %llu (%s)\n", bitfield32(msr_pmg_cst_config_control, 2, 0), "C0/C1 (no package C-state support)");
             break;
-        case 1: IOLOG(" - Package C-State Limit................ : %llu (%s)\n", bitfield32(msr, 2, 0), "C2");
+        case 1: IOLOG(" - Package C-State Limit................ : %llu (%s)\n", bitfield32(msr_pmg_cst_config_control, 2, 0), "C2");
             break;
-        case 2: IOLOG(" - Package C-State Limit................ : %llu (%s)\n", bitfield32(msr, 2, 0), "C6 (non-retention)");
+        case 2: IOLOG(" - Package C-State Limit................ : %llu (%s)\n", bitfield32(msr_pmg_cst_config_control, 2, 0), "C6 (non-retention)");
             break;
-        case 3: IOLOG(" - Package C-State Limit................ : %llu (%s)\n", bitfield32(msr, 2, 0), "C6 (retention)");
+        case 3: IOLOG(" - Package C-State Limit................ : %llu (%s)\n", bitfield32(msr_pmg_cst_config_control, 2, 0), "C6 (retention)");
             break;
-        case 7: IOLOG(" - Package C-State Limit................ : %llu (%s)\n", bitfield32(msr, 2, 0), "No limit. All C-states are available.");
+        case 7: IOLOG(" - Package C-State Limit................ : %llu (%s)\n", bitfield32(msr_pmg_cst_config_control, 2, 0), "No limit. All C-states are available.");
             break;
     }
     
